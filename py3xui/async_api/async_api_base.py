@@ -33,6 +33,7 @@ class AsyncBaseApi:
         custom_certificate_path (str | None): Path to a custom certificate file.
         max_retries (int): The maximum number of retries for a request.
         session (str): The session cookie for the XUI API.
+        cookie_name (str): The name of the cookie for the XUI API.
 
     Public Methods:
         login: Logs into the XUI API.
@@ -64,6 +65,7 @@ class AsyncBaseApi:
         self._custom_certificate_path = custom_certificate_path
         self._max_retries: int = 3
         self._session: str | None = None
+        self._cookie_name: str | None = None
         self.logger = logger or Logger(__name__)
 
     @property
@@ -146,6 +148,22 @@ class AsyncBaseApi:
             value (str | None): The session cookie for the XUI API."""
         self._session = value
 
+    @property
+    def cookie_name(self) -> str | None:
+        """The name of the cookie for the XUI API.
+
+        Returns:
+            str | None: The name of the cookie for the XUI API."""
+        return self._cookie_name
+
+    @cookie_name.setter
+    def cookie_name(self, value: str | None) -> None:
+        """Sets the name of the cookie for the XUI API.
+
+        Arguments:
+            value (str | None): The name of the cookie for the XUI API."""
+        self._cookie_name = value
+
     def _url(self, endpoint: str) -> str:
         """Returns the URL for the XUI API (adds the endpoint to the host URL).
 
@@ -204,8 +222,9 @@ class AsyncBaseApi:
                     # Otherwise, the default CA bundle will be used for verification.
                     verify = True
 
-                cookies = {"3x-ui": self.session} if self.session else {}
-                async with httpx.AsyncClient(cookies=cookies, verify=verify) as client:
+                async with httpx.AsyncClient(
+                    cookies=self.cookies, verify=verify, follow_redirects=True
+                ) as client:
                     if method == ApiFields.GET:
                         response = await client.get(url, headers=headers, **kwargs)
                     elif method == ApiFields.POST:
@@ -260,8 +279,21 @@ class AsyncBaseApi:
         for cookie_name in COOKIE_NAMES:
             cookie = response.cookies.get(cookie_name)
             if cookie:
+                self.logger.debug("Session cookie found: %s", cookie_name)
+                self.cookie_name = cookie_name
                 return cookie
         return None
+
+    @property
+    def cookies(self) -> dict[str, str]:
+        """Returns the cookies for the XUI API. If session is not set yet, returns an empty dict.
+
+        Returns:
+            dict[str, str]: The cookies for the XUI API."""
+        if not self.session or not self.cookie_name:
+            return {}
+
+        return {self.cookie_name: self.session}
 
     async def _check_response(self, response: httpx.Response) -> None:
         """Checks the response from the XUI API using the success field.
